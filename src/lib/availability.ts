@@ -60,24 +60,20 @@ export function requestedDuration(start: number, end: number): number {
   return start < end ? end - start : 0;
 }
 
-/**
- * Evaluate a candidate interval against the acceptance criteria.
- * Pure function: never mutates room or its bookings (AC5).
- */
-export function checkAvailability(room: Room, input: CheckInput): CheckResult {
+/** True when 0 <= start < end <= 24:00. */
+function isWellFormed(start: number, end: number): boolean {
+  return 0 <= start && start < end && end <= MINUTES_PER_DAY;
+}
+
+/* ---------- Layer 1: validation (AC1, AC2, AC6 messages) ---------- */
+
+/** Validate the requested interval. Returns user-readable messages; empty = valid. */
+export function validateInput(input: CheckInput): string[] {
   const reasons: string[] = [];
   const { currentTime, start, end } = input;
 
-  // AC3 — room blocked rejects everything.
-  if (room.blocked) {
-    reasons.push(
-      `Room is blocked${room.blockReason ? ` — ${room.blockReason}` : ''}; no bookings can be checked.`
-    );
-  }
-
   // AC1 — interval bounds and ordering.
-  const boundsOk = 0 <= start && start < end && end <= MINUTES_PER_DAY;
-  if (!boundsOk) {
+  if (!isWellFormed(start, end)) {
     if (start < 0) reasons.push('Start time cannot be before 00:00.');
     if (end > MINUTES_PER_DAY) reasons.push('End time cannot be after 24:00.');
     if (start >= end) {
@@ -95,7 +91,7 @@ export function checkAvailability(room: Room, input: CheckInput): CheckResult {
   }
 
   // AC2 — duration cap (only meaningful for a valid ordering).
-  if (start < end && end <= MINUTES_PER_DAY && start >= 0) {
+  if (isWellFormed(start, end)) {
     const duration = requestedDuration(start, end);
     if (duration > MAX_DURATION) {
       reasons.push(
@@ -104,19 +100,47 @@ export function checkAvailability(room: Room, input: CheckInput): CheckResult {
     }
   }
 
-  // AC4 — overlap check (touching endpoints allowed). Only run for a well-formed interval.
-  if (boundsOk && !room.blocked) {
-    const overlaps = room.bookings.filter((b) => b.start < end && start < b.end);
-    if (overlaps.length > 0) {
-      const list = overlaps.map((b) => `${fmtTime(b.start)}–${fmtTime(b.end)}`).join(', ');
-      reasons.push(
-        overlaps.length > 1
-          ? `Overlaps with existing bookings: ${list}.`
-          : `Overlaps with existing booking: ${list}.`
-      );
-    }
-  }
+  return reasons;
+}
 
+/* ---------- Layer 2: availability calculation (AC3, AC4) ---------- */
+
+/** Blocked room rejects everything. Empty array = room is open. */
+export function blockedReasons(room: Room): string[] {
+  return room.blocked
+    ? [`Room is blocked${room.blockReason ? ` — ${room.blockReason}` : ''}; no bookings can be checked.`]
+    : [];
+}
+
+/** Bookings that overlap the interval (touching endpoints allowed). Never mutates. */
+export function findOverlaps(room: Room, start: number, end: number): Booking[] {
+  return room.bookings.filter((b) => b.start < end && start < b.end);
+}
+
+function overlapReasons(room: Room, start: number, end: number): string[] {
+  const overlaps = findOverlaps(room, start, end);
+  if (overlaps.length === 0) return [];
+  const list = overlaps.map((b) => `${fmtTime(b.start)}–${fmtTime(b.end)}`).join(', ');
+  return [
+    overlaps.length > 1
+      ? `Overlaps with existing bookings: ${list}.`
+      : `Overlaps with existing booking: ${list}.`,
+  ];
+}
+
+/* ---------- Public entry point: combines the layers ---------- */
+
+/**
+ * Evaluate a candidate interval against the acceptance criteria.
+ * Pure function: never mutates room or its bookings (AC5).
+ */
+export function checkAvailability(room: Room, input: CheckInput): CheckResult {
+  const { start, end } = input;
+  const reasons = [
+    ...blockedReasons(room),
+    ...validateInput(input),
+    ...(isWellFormed(start, end) && !room.blocked ? overlapReasons(room, start, end) : []),
+  ];
   return {
     decision: reasons.length === 0 ? 'available' : 'unavailable',
     reasons,
