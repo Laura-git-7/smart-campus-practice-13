@@ -3,6 +3,13 @@
 Room availability checker for one fictional campus room, built in Bolt.new.
 All data is fictional; there is no backend, database, login or permanent booking creation.
 
+## Repository structure
+
+- **Code-based solution:** the project in the repository root (`src/`, `package.json`, etc.)
+- **Low-code solution:** the `low-code/` folder (export, screenshots, notes)
+- **Screenshots:** the `screenshots/` folder
+- **Report:** `docs/report.pdf`
+
 ## Setup
 
 npm install
