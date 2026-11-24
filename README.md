@@ -29,6 +29,6 @@ See AGENTS.md for constraints and verification rules.
 
 src/lib/availability.ts   pure availability and validation logic
 src/lib/sampleRoom.ts     fictional room and bookings
-src/availability.test.ts  Vitest tests
+src/lib/availability.test.ts  Vitest tests
 src/App.tsx               UI
 AGENTS.md                 instructions for coding agents
